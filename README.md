@@ -11,4 +11,4 @@ bad:
 ![](/demofile/bad.gif)
 
 good:
-!][](/demofile/good.gif)
+![](/demofile/good.gif)
