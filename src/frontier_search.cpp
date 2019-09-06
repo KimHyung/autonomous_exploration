@@ -59,7 +59,7 @@ std::list<Frontier> FrontierSearch::searchFrom(geometry_msgs::Point position){
         bfs.pop();
 
         //iterate over 4-connected neighbourhood
-        BOOST_FOREACH(unsigned nbr, nhood8(idx, costmap_)){
+        BOOST_FOREACH(unsigned nbr, nhood4(idx, costmap_)){
             //add to queue all free, unvisited cells, use descending search in case initialized on non-free cell
             //FREE_SPACE == map_[nbr]_
             if(map_[nbr] <= map_[idx] && !visited_flag[nbr]){
@@ -88,27 +88,13 @@ void chatterCallback(const geometry_msgs::Pose::ConstPtr &msg)
 
 Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell, unsigned int reference, std::vector<bool>& frontier_flag,geometry_msgs::Point position){
 
-    
-    //khs
-    // boost::shared_ptr<costmap_2d::Costmap2DROS> explore_costmap_ros_;
     ros::NodeHandle n;
     ros::ServiceClient check_path = n.serviceClient<nav_msgs::GetPlan>("/move_base/NavfnROS/make_plan");
-    // ros::ServiceClient subpose = n.serviceClient<geometry_msgs::Pose>("robot_pose_publisher");
-    // ros::Subscriber subpose = n.subscribe("robot_pose",1000,chatterCallback);
-    // geometry_msgs::Pose khs;
-    // if(subpose.call(khs)){
-    //     ROS_ERROR("WAAAAAAAAAAAAAAAAAAAAAA");
-    //     std::cout<< khs.position<<std::endl;
-    // }
-    
-    // std::cout << khs.position <<std::endl; 
     nav_msgs::GetPlan srv_plan;
     geometry_msgs::PoseStamped start;
     geometry_msgs::PoseStamped goal;
     tf::Stamped<tf::Pose> robot_pose;
     tf::TransformListener tf_listener_;
-    // explore_costmap_ros_ = boost::shared_ptr<costmap_2d::Costmap2DROS>(new costmap_2d::Costmap2DROS("explore_server", tf_listener_));
-    //initialize frontier structure
     Frontier output;
     output.centroid.x = 0;
     output.centroid.y = 0;
@@ -123,16 +109,11 @@ Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell, unsigned in
     //push initial gridcell onto queue
     std::queue<unsigned int> bfs;
     bfs.push(initial_cell);
-    // explore_costmap_ros_->resetLayers();
-    //cache reference position in world coords
-    // explore_costmap_ros_->getRobotPose(robot_pose);
            
     unsigned int rx,ry;
     double reference_x, reference_y;
     costmap_.indexToCells(reference,rx,ry);
     costmap_.mapToWorld(rx,ry,reference_x,reference_y);
-    // tf::poseStampedTFToMsg(robot_pose,srv_plan.request.start);
-    // std::cout<<costmap_.getCost(rx,ry) <<std::endl;
     
     while(!bfs.empty()){
         unsigned int idx = bfs.front();
@@ -154,23 +135,18 @@ Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell, unsigned in
                 //update centroid of frontier
                 output.centroid.x += wx;
                 output.centroid.y += wy;
-                
-                
-                // ROS_INFO("Make plan: %d", (check_path.call(srv_plan) ? 1 : 0));
-                // ROS_INFO("Plan size: %d", srv_plan.response.plan.poses.size());
     
-                double distance = sqrt(pow((double(reference_x)-double(wx)),2.0) + pow((double(reference_y)-double(wy)),2.0));
-                if(distance < output.min_distance && distance != 0){
-                    // output.min_distance = distance;
-                    output.middle.x = wx;
-                    output.middle.y = wy;
-                }        
+                // double distance = sqrt(pow((double(reference_x)-double(wx)),2.0) + pow((double(reference_y)-double(wy)),2.0));
+                // if(distance < output.min_distance && distance != 0){
+                //     // output.min_distance = distance;
+                //     output.middle.x = wx;
+                //     output.middle.y = wy;
+                // }        
                 //add to queue for breadth first search
                 bfs.push(nbr);
             }
         }
     }
-
     //average out frontier centroid
     output.centroid.x /= output.size;
     output.centroid.y /= output.size;
@@ -182,33 +158,19 @@ Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell, unsigned in
     srv_plan.request.goal.header.frame_id = "map";
     srv_plan.request.start.header.frame_id = "map";
     srv_plan.request.tolerance = 1.5;
+    if(check_path){
+        check_path.call(srv_plan);
+    }
     int tmp = srv_plan.response.plan.poses.size();
     if(tmp !=0){
         output.min_distance = tmp;
     }
     else{
-        output.min_distance =  2,147,483,647;
+        output.min_distance = 10;
     }
-    
-    
-    
-    // goal.pose.position.x=output.centroid.x;
-    // goal.pose.position.y=output.centroid.y;
-    // tf::poseStampedTFToMsg(robot_pose,srv_plan.request.start);
-    // srv_plan.request.goal = goal;
-    // srv_plan.request.goal.header.frame_id = "map";
-    // srv_plan.request.start.header.frame_id = "map";
-    // srv_plan.request.tolerance = 1.5;
-    // ROS_INFO("Make plan: %d", (check_path.call(srv_plan) ? 1 : 0));
-    // ROS_INFO("Plan size: %d", srv_plan.response.plan.poses.size());
-    // if(check_path.call(srv_plan)){
-    //     double distance = srv_plan.response.plan.poses.size();
-    //     if(distance != 0){
-    //         output.min_distance = distance;
-    //         output.middle.x = output.centroid.x;
-    //         output.middle.y = output.centroid.y;
-    //     }        
-    // }
+    ROS_WARN("KHS-");
+    std::cout <<" plan size : " << output.min_distance <<std::endl;
+    ros::Rate r(10);
     return output;
 }
 

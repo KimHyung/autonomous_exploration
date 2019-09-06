@@ -52,7 +52,7 @@ namespace frontier_exploration
         matchSize();
 
         nh_.param<bool>("resize_to_boundary", resize_to_boundary_, true);
-        nh_.param<std::string>("frontier_travel_point", frontier_travel_point_, "closest");
+        nh_.param<std::string>("frontier_travel_point", frontier_travel_point_, "centroid");
 
         polygonService_ = nh_.advertiseService("update_boundary_polygon", &BoundedExploreLayer::updateBoundaryPolygonService, this);
         frontierService_ = nh_.advertiseService("get_next_frontier", &BoundedExploreLayer::getNextFrontierService, this);
@@ -154,7 +154,7 @@ namespace frontier_exploration
             next_frontier.pose.position = selected.centroid;
         }else{
             ROS_ERROR("Invalid 'frontier_travel_point' parameter, falling back to 'closest'");
-            next_frontier.pose.position = selected.initial;
+            next_frontier.pose.position = selected.centroid;
         }
 
         next_frontier.pose.orientation = tf::createQuaternionMsgFromYaw( yawOfVector(start_pose.pose.position, next_frontier.pose.position) );

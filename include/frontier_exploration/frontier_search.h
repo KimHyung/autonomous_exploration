@@ -3,6 +3,7 @@
 
 #include <frontier_exploration/Frontier.h>
 #include <costmap_2d/costmap_2d.h>
+#include <geometry_msgs/Point.h>
 
 namespace frontier_exploration{
 
@@ -35,7 +36,7 @@ protected:
      * @param frontier_flag Flag vector indicating which cells are already marked as frontiers
      * @return
      */
-    Frontier buildNewFrontier(unsigned int initial_cell, unsigned int reference, std::vector<bool>& frontier_flag);
+    Frontier buildNewFrontier(unsigned int initial_cell, unsigned int reference, std::vector<bool>& frontier_flag, geometry_msgs::Point position);
 
     /**
      * @brief isNewFrontierCell Evaluate if candidate cell is a valid candidate for a new frontier.

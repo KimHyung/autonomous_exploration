@@ -22,7 +22,6 @@
 #include <visualization_msgs/Marker.h>
 #include <boost/foreach.hpp>
 
-
 namespace frontier_exploration{
 
 /**
