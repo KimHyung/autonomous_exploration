@@ -22,6 +22,10 @@ FrontierSearch::FrontierSearch(costmap_2d::Costmap2D &costmap) : costmap_(costma
 
 std::list<Frontier> FrontierSearch::searchFrom(geometry_msgs::Point position){
 
+    ros::NodeHandle n;
+    ros::ServiceClient check_path = n.serviceClient<nav_msgs::GetPlan>("/move_base/NavfnROS/make_plan");
+    nav_msgs::GetPlan srv_plan;
+
     std::list<Frontier> frontier_list;
     //Sanity check that robot is inside costmap bounds before searching
     unsigned int mx,my;
@@ -75,15 +79,71 @@ std::list<Frontier> FrontierSearch::searchFrom(geometry_msgs::Point position){
             }
         }
     }
-
-    return frontier_list;
-
-}
-
-void chatterCallback(const geometry_msgs::Pose::ConstPtr &msg)
-{
-    ROS_WARN("HI!~!");
-    std::cout<<msg<<std::endl;
+    ROS_ERROR("frontier list size is %d",frontier_list.size());
+    
+    Frontier selected;
+    Frontier back_up;
+    selected.min_distance = std::numeric_limits<double>::infinity();
+    back_up.min_distance = std::numeric_limits<double>::infinity();
+    BOOST_FOREACH(Frontier frontier, frontier_list){
+        if (frontier.min_distance < selected.min_distance){
+            selected = frontier;
+        }
+        else{
+            if(frontier.min_distance < back_up.min_distance){
+                back_up = frontier;
+            }
+        }
+    }
+    ROS_WARN("khs");
+    std::cout<< selected.min_distance <<std::endl;
+    std::cout<< back_up.min_distance <<std::endl;
+    std::list<Frontier> new_frontier_list;
+    if(frontier_list.size() == 1){
+        new_frontier_list.push_back(selected);
+    }
+    else{
+        int select_plan, back_up_plan;
+        srv_plan.request.start.pose.position.x = position.x;
+        srv_plan.request.start.pose.position.y = position.y;
+        srv_plan.request.goal.pose.position.x = selected.centroid.x;
+        srv_plan.request.goal.pose.position.y = selected.centroid.y;
+        srv_plan.request.goal.header.frame_id = "map";
+        srv_plan.request.start.header.frame_id = "map";
+        srv_plan.request.tolerance = 1.5;
+        if(check_path){
+            check_path.call(srv_plan);
+            select_plan = srv_plan.response.plan.poses.size();
+        }
+        srv_plan.request.start.pose.position.x = position.x;
+        srv_plan.request.start.pose.position.y = position.y;
+        srv_plan.request.goal.pose.position.x = back_up.centroid.x;
+        srv_plan.request.goal.pose.position.y = back_up.centroid.y;
+        srv_plan.request.goal.header.frame_id = "map";
+        srv_plan.request.start.header.frame_id = "map";
+        srv_plan.request.tolerance = 1.5;
+        if(check_path){
+            check_path.call(srv_plan);
+            back_up_plan = srv_plan.response.plan.poses.size();
+        }
+        if(select_plan == 0){
+            new_frontier_list.push_back(back_up);
+        }
+        else{
+            if(back_up_plan == 0){
+                new_frontier_list.push_back(selected);
+            }
+            else{
+                if(select_plan < back_up_plan){
+                    new_frontier_list.push_back(selected);
+                }
+                else{
+                    new_frontier_list.push_back(back_up);
+                }
+            }
+        }
+    }
+    return new_frontier_list;
 }
 
 Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell, unsigned int reference, std::vector<bool>& frontier_flag,geometry_msgs::Point position){
@@ -136,12 +196,12 @@ Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell, unsigned in
                 output.centroid.x += wx;
                 output.centroid.y += wy;
     
-                // double distance = sqrt(pow((double(reference_x)-double(wx)),2.0) + pow((double(reference_y)-double(wy)),2.0));
-                // if(distance < output.min_distance && distance != 0){
-                //     // output.min_distance = distance;
-                //     output.middle.x = wx;
-                //     output.middle.y = wy;
-                // }        
+                double distance = sqrt(pow((double(reference_x)-double(wx)),2.0) + pow((double(reference_y)-double(wy)),2.0));
+                if(distance < output.min_distance && distance != 0){
+                    output.min_distance = distance;
+                    output.middle.x = wx;
+                    output.middle.y = wy;
+                }        
                 //add to queue for breadth first search
                 bfs.push(nbr);
             }
@@ -150,27 +210,26 @@ Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell, unsigned in
     //average out frontier centroid
     output.centroid.x /= output.size;
     output.centroid.y /= output.size;
-    goal.pose.position.x=output.centroid.x;
-    goal.pose.position.y=output.centroid.y;
-    srv_plan.request.start.pose.position.x = position.x;
-    srv_plan.request.start.pose.position.y = position.y;
-    srv_plan.request.goal = goal;
-    srv_plan.request.goal.header.frame_id = "map";
-    srv_plan.request.start.header.frame_id = "map";
-    srv_plan.request.tolerance = 1.5;
-    if(check_path){
-        check_path.call(srv_plan);
-    }
-    int tmp = srv_plan.response.plan.poses.size();
-    if(tmp !=0){
-        output.min_distance = tmp;
-    }
-    else{
-        output.min_distance = 10;
-    }
-    ROS_WARN("KHS-");
-    std::cout <<" plan size : " << output.min_distance <<std::endl;
-    ros::Rate r(10);
+    
+    // goal.pose.position.x=output.centroid.x;
+    // goal.pose.position.y=output.centroid.y;
+    // srv_plan.request.start.pose.position.x = position.x;
+    // srv_plan.request.start.pose.position.y = position.y;
+    // srv_plan.request.goal = goal;
+    // srv_plan.request.goal.header.frame_id = "map";
+    // srv_plan.request.start.header.frame_id = "map";
+    // srv_plan.request.tolerance = 1.5;
+    // if(check_path){
+    //     check_path.call(srv_plan);
+    // }
+    // int tmp = srv_plan.response.plan.poses.size();
+    // if(tmp !=0){
+    //     output.min_distance = tmp;
+    // }
+    // else{
+    //     output.min_distance = 10;
+    // }
+
     return output;
 }
 
