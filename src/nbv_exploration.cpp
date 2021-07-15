@@ -70,6 +70,11 @@ class Frontiers
     std::vector<int> regions;
     geometry_msgs::Point robot_pose;
 
+    //resources-path planner
+    ros::ServiceClient make_plan_;
+    nav_msgs::GetPlan srv_plan;
+    ros::Publisher goal_pub_;
+
     //check computation times
     double detect_time=0;
     double cluster_time=0;
@@ -92,8 +97,10 @@ class Frontiers
             frontier_pub_ =  n.advertise<visualization_msgs::Marker>("/frontiers", 1);
             center_frontier_pub_ =  n.advertise<visualization_msgs::Marker>("/center_frontiers", 1);
             cluster_pub_ =  n.advertise<visualization_msgs::Marker>("/region_test", 1);
+            goal_pub_ = n.advertise<visualization_msgs::Marker>("/nbv_point", 1);
             
             //service
+            make_plan_ = n.serviceClient<nav_msgs::GetPlan>("/move_base/NavfnROS/make_plan");
 
         }
 
@@ -150,7 +157,9 @@ class Frontiers
             detect_frontier();
             cluster_frontier();
             publish_frontier();
-            next_best_view();
+            cal_region();
+            cal_dist();
+            nbv_exploration();
             print_status();
             clear_vectors();
         }
@@ -158,10 +167,15 @@ class Frontiers
         void print_status(){
             total = detect_time+cluster_time+cal_size_time+cal_dist_time+cal_region_time+cal_region_time_;
             printf("STATUS------------------------------------\n");
-            ROS_INFO("[#%d]%d x %d map @ %.3f m/pix",call_cn, map->info.width, map->info.height, map->info.resolution);
+            printf("[#%d]%d x %d map @ %.3f m/pix\n",call_cn, map->info.width, map->info.height, map->info.resolution);
             printf("detect %.1f ms\tcluster %.1f ms\tsize %.1f ms\n",detect_time,cluster_time,cal_size_time);
             printf("dist %.1f ms\tregion %.1f ms\t\e[1mtotal %.1f ms\e[0m\n",cal_dist_time,cal_region_time+cal_region_time_,total);
-            printf("------------------------------------\n");
+            printf("FACTORS------------------------------------\n");
+
+            for(int i=0; i<valid_cluster.size();i++){
+                printf("NO %d : [%d], dist[%d], region[%.1f], size[%.1f]\n",i,clustered[valid_cluster[i]].id, clustered[valid_cluster[i]].dist_factor, clustered[valid_cluster[i]].region_factor, clustered[valid_cluster[i]].num_factor);
+            }
+            printf("----------------------------------------------\n");
         }
 
         void detect_frontier(){
@@ -244,32 +258,10 @@ class Frontiers
             }
         }
 
-        void next_best_view(){
-            // //FOR TEST
-            // visualization_msgs::Marker points;
-            // points.header.frame_id = "map";
-            // points.header.stamp = ros::Time::now();
-            // points.action = visualization_msgs::Marker::ADD;
-            // points.pose.orientation.w =1.0;
-
-            // points.id = 0;
-            // points.type = visualization_msgs::Marker::POINTS;
-            // points.scale.x = 0.55;
-            // points.scale.y = 0.55;
-            // points.color.r = 1.0;
-            // points.color.g = 1.0;
-            // points.color.b = 0.0;
-            // points.color.a = 1.0;
-
-            // geometry_msgs::Point p;
-            // //test
+        void cal_region(){
             clock_t start, end;
             start = clock();
-            if(regions.size()!=0){
-                printf("NONE REGION : %d\n", regions[segment_img.at<uchar>(0,0)]);
-            }
             if(!segment_img.empty() && regions.size() != 0){
-                std::cout<<"Total Regions : "<<regions.size()<<std::endl;
                 int r_x = (robot_pose.x - map->info.origin.position.x - map->info.resolution/2)/map->info.resolution;
                 int r_y = (robot_pose.y - map->info.origin.position.y - map->info.resolution/2)/map->info.resolution;
                 double robot_region =regions[segment_img.at<uchar>(r_y,r_x)];
@@ -287,27 +279,119 @@ class Frontiers
                         }
                     }
                     robot_region =regions[segment_img.at<uchar>(r_y,r_x)];
-                    // printf("robot[%d,%d], fronteir[%d,%d]\n",r_y,r_x,t_y,t_x);
-                    // std::cout<<"robot is in region "<<robot_region<<std::endl;
-                    // std::cout<<"frontier is in region "<<include_region<<std::endl;
                     if(robot_region == include_region || include_region == regions[segment_img.at<uchar>(0,0)]){
-                        // p.x = (t_x*map->info.resolution) + map->info.origin.position.x + map->info.resolution /2;
-                        // p.y = (t_y*map->info.resolution) + map->info.origin.position.y + map->info.resolution /2;
-                        // p.z = 0.3;
-                        // points.points.push_back(p);
                         clustered[valid_cluster[i]].region_factor = 0.5;
                     }
                 }
             }
             end = clock();
             cal_region_time_ = (double)(end-start)/CLOCKS_PER_SEC * 1000;
-            // p.x = (0*map->info.resolution) + map->info.origin.position.x + map->info.resolution /2;
-            // p.y = (0*map->info.resolution) + map->info.origin.position.y + map->info.resolution /2;
-            // p.z = 0.3;
-            // points.points.push_back(p);
-            // cluster_pub_.publish(points);
         }
 
+        void cal_dist(){
+            clock_t start, end;
+            start = clock();
+            int total_waypoints=1;
+            if(make_plan_){
+                geometry_msgs::Point g;
+                g.z=0;
+                for(int i=0; i<valid_cluster.size();i++){
+                    int num_frontier = clustered[valid_cluster[i]].frontier_index.size();
+                    int t_x = clustered[valid_cluster[i]].frontier_index[num_frontier/2] % map->info.width;
+                    int t_y = clustered[valid_cluster[i]].frontier_index[num_frontier/2] / map->info.width;
+                    g.x = (t_x*map->info.resolution) + map->info.origin.position.x + map->info.resolution /2;
+                    g.y = (t_y*map->info.resolution) + map->info.origin.position.y + map->info.resolution /2;
+    
+
+                    srv_plan.request.start.pose.position.x = robot_pose.x;
+                    srv_plan.request.start.pose.position.y = robot_pose.y;
+                    srv_plan.request.start.pose.position.z = 0;
+                    srv_plan.request.goal.pose.position.x = g.x;
+                    srv_plan.request.goal.pose.position.y = g.y;
+                    srv_plan.request.goal.pose.position.z = g.z;
+                    srv_plan.request.goal.header.frame_id = "map";
+                    srv_plan.request.start.header.frame_id = "map";
+                    srv_plan.request.tolerance = 1.5;
+
+                    make_plan_.call(srv_plan);
+
+                    int path_waypoints = srv_plan.response.plan.poses.size();
+
+                    if(path_waypoints!=0){
+                        // if(max_waypoints<path_waypoints){
+                        //     max_waypoints = path_waypoints;
+                        // }
+                        total_waypoints = total_waypoints + path_waypoints;
+                        clustered[valid_cluster[i]].dist_factor = path_waypoints;
+                    }
+                    else{
+                        clustered[valid_cluster[i]].dist_factor = std::numeric_limits<double>::infinity();
+                    }
+                }
+            }
+            else{
+                ROS_ERROR("Fail to call service to path planner");
+            }
+            end = clock();
+            cal_dist_time = (double)(end-start)/CLOCKS_PER_SEC *1000;
+        }
+        
+        void nbv_exploration(){
+            // clock_t start, end;
+            // double result;
+            // start = clock();
+            visualization_msgs::Marker goal_point;
+            goal_point.header.frame_id = "map";
+            goal_point.header.stamp = ros::Time::now();
+            goal_point.ns = "goal_point";
+            goal_point.action = visualization_msgs::Marker::ADD;
+            goal_point.pose.orientation.w  =1.0;
+            goal_point.id = 0;
+            goal_point.type = visualization_msgs::Marker::POINTS;
+            goal_point.scale.x = 0.3;
+            goal_point.scale.y = 0.3;
+            goal_point.color.r = 1.0;
+            goal_point.color.g = 0.0;
+            goal_point.color.b = 1.0;
+            goal_point.color.a = 1.0;
+
+            if(valid_cluster.size()!=0){
+                int answer= valid_cluster[0];
+                double max = clustered[valid_cluster[0]].num_factor*0.5-clustered[valid_cluster[0]].dist_factor*1e-3+clustered[valid_cluster[0]].region_factor;
+                for(int i=1; i<valid_cluster.size();i++){
+                    double obj =  clustered[valid_cluster[i]].num_factor*0.5-clustered[valid_cluster[i]].dist_factor*1e-3+clustered[valid_cluster[i]].region_factor;
+                    if(max<obj){
+                        max = obj;
+                        answer = valid_cluster[i];
+                    }
+                }
+                int t_x = clustered[answer].frontier_index[clustered[answer].frontier_index.size()/2] % map->info.width;
+                int t_y = clustered[answer].frontier_index[clustered[answer].frontier_index.size()/2] / map->info.width;
+                    
+                geometry_msgs::Point p;
+                p.x = (t_x *map->info.resolution) + map->info.origin.position.x + map->info.resolution /2;
+                p.y = (t_y *map->info.resolution) + map->info.origin.position.y + map->info.resolution /2;
+                p.z = 1.0;
+                goal_point.points.push_back(p);
+                goal_pub_.publish(goal_point);
+                //send goal msg
+                MoveBaseClient mc("move_base");
+                while(!mc.waitForServer(ros::Duration(5,0))){
+                    ROS_INFO("Waiting for the move_base action server to come up");
+                }
+                // ROS_INFO("STATE : %s", mc.getState().toString().c_str());   
+                move_base_msgs::MoveBaseGoal goal_;
+                goal_.target_pose.pose.position = p;
+                goal_.target_pose.pose.orientation.w = 1.;
+                goal_.target_pose.header.frame_id = "map";
+                goal_.target_pose.header.stamp = ros::Time::now();
+                mc.sendGoal(goal_);
+                // ROS_INFO("send Goal");
+
+                mc.waitForResult(ros::Duration(6,0));
+            }
+        }
+        
         void publish_frontier(){
             //INITIALIZE FRONTIER, FRONTIER GROUPS, 
             visualization_msgs::Marker points, cluster_point, center_point;
@@ -409,11 +493,14 @@ class Frontiers
             }
             detect_time=cluster_time=cal_size_time=cal_dist_time=cal_region_time=cal_region_time_=total=0;
         }
-            
+
+        ~Frontiers(){
+            clear_vectors();
+        }
 };
 
 int main(int argc, char **argv){
-    ros::init(argc, argv, "cluster_frontier");
+    ros::init(argc, argv, "autonomous exploration");
     Frontiers khs("map");
     ros::spin();
 

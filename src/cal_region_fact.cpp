@@ -15,6 +15,8 @@
 #include "stdio.h"
 #include "math.h"
 #include "time.h"
+#include <mutex>
+
 //opencv
 #include "image_transport/image_transport.h"
 #include "opencv2/highgui/highgui.hpp"
@@ -150,7 +152,7 @@ class Frontiers
             detect_frontier();
             cluster_frontier();
             publish_frontier();
-            next_best_view();
+            cal_region();
             print_status();
             clear_vectors();
         }
@@ -244,7 +246,7 @@ class Frontiers
             }
         }
 
-        void next_best_view(){
+        void cal_region(){
             // //FOR TEST
             // visualization_msgs::Marker points;
             // points.header.frame_id = "map";
