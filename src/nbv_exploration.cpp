@@ -500,7 +500,7 @@ class Frontiers
 };
 
 int main(int argc, char **argv){
-    ros::init(argc, argv, "autonomous exploration");
+    ros::init(argc, argv, "autonomous_exploration");
     Frontiers khs("map");
     ros::spin();
 
