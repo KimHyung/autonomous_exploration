@@ -85,3 +85,13 @@ To solve this error, we used 2d map segmentation information to give the cost fu
 ## Result
 X8
 <img src = "./etc/simulation.gif" width="">
+
+---
+## Challenge (In progress)
+In the cluttered environment, when autonomous driving using a 2d lidar sensor, the 3D size of various obstacles such as chairs and desks was not taken into account, so driving failed in many cases. To solve this error, simply create a 3D space using a visual slam or 3d lidar sensor and project it in 2d. (2) The 3d lidar sensor has a relatively high computational cost.
+<img src = "./etc/4.png" width="">
+
+To solve this error, we would like to propose a method for recognizing an object and measuring the 3d size of the object.
+<img src = "./etc/5.png" width="">
+
+<img src = "./etc/6.PNG" width="">
