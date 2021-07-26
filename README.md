@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Autonomous Exploration
 ---
 Autonomous exploration package aims to explore unknown areas faster and more efficiently by selecting the most meaningful point as the next goal point.
@@ -84,4 +83,5 @@ To solve this error, we used 2d map segmentation information to give the cost fu
 
 ---
 ## Result
+X8
 <img src = "./etc/simulation.gif" width="">
