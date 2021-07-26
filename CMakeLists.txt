@@ -34,5 +34,7 @@ target_link_libraries(cal_region_fact ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
 add_executable(nbv_exploration src/nbv_exploration.cpp)
 target_link_libraries(nbv_exploration ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
 
+add_executable(test_time src/test.cpp)
+target_link_libraries(test_time ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
 
 

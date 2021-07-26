@@ -32,9 +32,9 @@ struct frontier_group{
     int id;
     std::vector<int> frontier_index;
     double num_factor;
-    int dist_factor;
+    double dist_factor;
     double region_factor;
-    double info_factor;
+    double obj;
 };
 
 class Frontiers
@@ -62,7 +62,7 @@ class Frontiers
     //resources-clustering
     frontier_group *clustered = new frontier_group[1000000];
     std::vector<int> valid_cluster;
-    int group_id;
+    int group_id=0;
 
     //resources-region
     cv_bridge::CvImagePtr cv_ptr;
@@ -74,6 +74,7 @@ class Frontiers
     ros::ServiceClient make_plan_;
     nav_msgs::GetPlan srv_plan;
     ros::Publisher goal_pub_;
+    int total_waypoints;
 
     //check computation times
     double detect_time=0;
@@ -104,16 +105,14 @@ class Frontiers
 
         }
 
-        void odomCallback(const nav_msgs::Odometry::ConstPtr& robot_)
+        void odomCallback(const nav_msgs::Odometry::ConstPtr& robot)
         {
-            robot_pose.x = robot_->pose.pose.position.x;
-            robot_pose.y = robot_->pose.pose.position.y;
-
+            robot_pose.x = robot->pose.pose.position.x;
+            robot_pose.y = robot->pose.pose.position.y;
         }
 
         void segmentCallback(const sensor_msgs::ImageConstPtr& sub_image){
-            clock_t start, end;
-            start = clock();
+            ROS_WARN("SEG SUB");
             try{
                 cv_ptr = cv_bridge::toCvCopy(sub_image);
             }
@@ -121,10 +120,18 @@ class Frontiers
                 ROS_ERROR("no image(%s)", e.what());
                 return;
             }
+            cout<<1<<endl;
             cv::Mat convert_img = cv_ptr->image;
+            cout<<2<<endl;
             depthToCV8UC1(convert_img, segment_img);
+            cout<<3<<endl;
             cv::flip(segment_img, segment_img, 0);
+            cout<<4<<endl;
             int cnt=0;
+            cout<<5<<endl;
+            cout<<segment_img.rows<<","<<segment_img.cols<<endl;
+            cout<<segment_img.channels()<<endl;
+            cout<<"test"<<endl;
             for(int i=0; i<segment_img.rows; i++){
                 for(int j=0; j<segment_img.cols;j++){
                     if(segment_img.at<uchar>(j,i) != 0){
@@ -146,41 +153,62 @@ class Frontiers
                     }
                 }
             }
-            end = clock();
-            cal_region_time = (double)(end - start)/CLOCKS_PER_SEC * 1000;
+            cout<<6<<endl;
+            ROS_WARN("SEG out");
         }
 
         void mapCallback(const nav_msgs::OccupancyGridConstPtr& map_)
         {
-            map = map_;
+            if(map!=map_){
+                if(frontier.size()>0) frontier.clear();
+                if(visited.size()>0)  visited.clear();
+                if(frontier_map.size()>0)frontier_map.clear();
+                if(valid_cluster.size()>0) valid_cluster.clear();
+                for(int i=0; i<group_id;i++){
+                    clustered[i].frontier_index.clear();
+                }
+                map = map_;
+                detect_frontier();
+                cluster_frontier();
+                cal_region();
+                cal_dist();
+                publish_frontier();
+                nbv_exploration();
+                print_status();
+            }
+            else{
+                detect_frontier();
+                cluster_frontier();
+                cal_region();
+                cal_dist();
+                publish_frontier();
+                nbv_exploration();
+                print_status();
+            }
             call_cn++;
-            detect_frontier();
-            cluster_frontier();
-            publish_frontier();
-            cal_region();
-            cal_dist();
-            nbv_exploration();
-            print_status();
-            clear_vectors();
+            // clear_vectors();
+            
         }
 
         void print_status(){
-            total = detect_time+cluster_time+cal_size_time+cal_dist_time+cal_region_time+cal_region_time_;
             printf("STATUS------------------------------------\n");
             printf("[#%d]%d x %d map @ %.3f m/pix\n",call_cn, map->info.width, map->info.height, map->info.resolution);
-            printf("detect %.1f ms\tcluster %.1f ms\tsize %.1f ms\n",detect_time,cluster_time,cal_size_time);
-            printf("dist %.1f ms\tregion %.1f ms\t\e[1mtotal %.1f ms\e[0m\n",cal_dist_time,cal_region_time+cal_region_time_,total);
             printf("FACTORS------------------------------------\n");
 
             for(int i=0; i<valid_cluster.size();i++){
-                printf("NO %d : [%d], dist[%d], region[%.1f], size[%.1f]\n",i,clustered[valid_cluster[i]].id, clustered[valid_cluster[i]].dist_factor, clustered[valid_cluster[i]].region_factor, clustered[valid_cluster[i]].num_factor);
+                printf("NO %d : [%d], dist[%.3f], region[%.3f], size[%.3f], obj[%.3f]\n", 
+                i, 
+                clustered[valid_cluster[i]].id, 
+                exp(-clustered[valid_cluster[i]].dist_factor), 
+                clustered[valid_cluster[i]].region_factor, 
+                clustered[valid_cluster[i]].num_factor,
+                clustered[valid_cluster[i]].obj);
             }
             printf("----------------------------------------------\n");
         }
 
         void detect_frontier(){
-            clock_t start, end;
-            start = clock();
+            cout<<"Detect Frontier"<<endl;
             for(int i=0; i<map->info.width * map->info.height; i++){
                 int t_x = i % map->info.width;
                 int t_y = i / map->info.width;
@@ -213,20 +241,15 @@ class Frontiers
                 }
                 visited.push_back(0);
             }
-            end = clock();
-            detect_time = (double)(end - start)/CLOCKS_PER_SEC * 1000;
         }
 
         void cluster_frontier(){
+            cout<<"Cluster Frontier"<<endl;
             group_id = 0;
-            clock_t start, end;
-            start = clock();
             for(int i=0; i<frontier.size(); i++){
                 bfs_search(frontier[i]);
                 group_id++;
             }
-            end = clock();
-            cluster_time = (double)(end - start)/CLOCKS_PER_SEC*1000;
         }
 
         void bfs_search(int index){
@@ -259,39 +282,46 @@ class Frontiers
         }
 
         void cal_region(){
-            clock_t start, end;
-            start = clock();
             if(!segment_img.empty() && regions.size() != 0){
                 int r_x = (robot_pose.x - map->info.origin.position.x - map->info.resolution/2)/map->info.resolution;
                 int r_y = (robot_pose.y - map->info.origin.position.y - map->info.resolution/2)/map->info.resolution;
                 double robot_region =regions[segment_img.at<uchar>(r_y,r_x)];
                 
                 for(int i=0; i<valid_cluster.size();i++){
-                    int t_x = clustered[valid_cluster[i]].frontier_index[clustered[valid_cluster[i]].frontier_index.size()/2] % map->info.width;
-                    int t_y = clustered[valid_cluster[i]].frontier_index[clustered[valid_cluster[i]].frontier_index.size()/2] / map->info.width;
+                    int num_frontier = clustered[i].frontier_index.size();
+                    int t_x_0 = clustered[i].frontier_index[0] % map->info.width;
+                    int t_y_0 = clustered[i].frontier_index[0] / map->info.width;
+                    int t_x_1 = clustered[i].frontier_index[num_frontier/2] % map->info.width;
+                    int t_y_1 = clustered[i].frontier_index[num_frontier/2] / map->info.width;
+                    int t_x_2 = clustered[i].frontier_index[num_frontier-1] % map->info.width;
+                    int t_y_2 = clustered[i].frontier_index[num_frontier-1] / map->info.width;
+                    int t_x = (t_x_0+t_x_1+t_x_2)/3;
+                    int t_y = (t_y_0+t_y_1+t_y_2)/3;
+                    
+                    
+                    // int t_x = clustered[valid_cluster[i]].frontier_index[clustered[valid_cluster[i]].frontier_index.size()/2] % map->info.width;
+                    // int t_y = clustered[valid_cluster[i]].frontier_index[clustered[valid_cluster[i]].frontier_index.size()/2] / map->info.width;
                     double include_region = regions[segment_img.at<uchar>(t_y,t_x)];
-                    for(int j=0;j<4;j++){
-                        int nx = t_x + dx[j];
-                        int ny = t_y + dx[j];
-                        if(map->data[gridTomap(nx,ny,map->info.width)]==0){
-                            include_region = regions[segment_img.at<uchar>(ny,nx)];
-                            break;
-                        }
-                    }
+                    // for(int j=0;j<4;j++){
+                    //     int nx = t_x + dx[j];
+                    //     int ny = t_y + dx[j];
+                    //     if(map->data[gridTomap(nx,ny,map->info.width)]==0){
+                    //         include_region = regions[segment_img.at<uchar>(ny,nx)];
+                    //         break;
+                    //     }
+                    // }
                     robot_region =regions[segment_img.at<uchar>(r_y,r_x)];
+                    // if(robot_region == include_region || include_region == regions[segment_img.at<uchar>(0,0)])
                     if(robot_region == include_region || include_region == regions[segment_img.at<uchar>(0,0)]){
-                        clustered[valid_cluster[i]].region_factor = 0.5;
+                        clustered[valid_cluster[i]].region_factor = 1.0;
                     }
                 }
             }
-            end = clock();
-            cal_region_time_ = (double)(end-start)/CLOCKS_PER_SEC * 1000;
         }
 
         void cal_dist(){
-            clock_t start, end;
-            start = clock();
-            int total_waypoints=1;
+            total_waypoints=0;
+            int avg_waypoints=0;
             if(make_plan_){
                 geometry_msgs::Point g;
                 g.z=0;
@@ -322,24 +352,31 @@ class Frontiers
                         //     max_waypoints = path_waypoints;
                         // }
                         total_waypoints = total_waypoints + path_waypoints;
+                        avg_waypoints+=1;
                         clustered[valid_cluster[i]].dist_factor = path_waypoints;
                     }
                     else{
                         clustered[valid_cluster[i]].dist_factor = std::numeric_limits<double>::infinity();
+                        ROS_WARN("INFINITY");
                     }
+                }
+                avg_waypoints = total_waypoints/avg_waypoints;
+                for(int i=0; i<valid_cluster.size();i++){
+                    if(clustered[valid_cluster[i]].dist_factor!=INFINITY){
+                        clustered[valid_cluster[i]].dist_factor = clustered[valid_cluster[i]].dist_factor/(double)total_waypoints;
+                    }
+                    // else{
+                    //     // clustered[valid_cluster[i]].dist_factor = clustered[valid_cluster[i]].dist_factor/total_waypoints;
+                    //     clustered[valid_cluster[i]].num_factor = 0;
+                    // }
                 }
             }
             else{
                 ROS_ERROR("Fail to call service to path planner");
             }
-            end = clock();
-            cal_dist_time = (double)(end-start)/CLOCKS_PER_SEC *1000;
         }
         
         void nbv_exploration(){
-            // clock_t start, end;
-            // double result;
-            // start = clock();
             visualization_msgs::Marker goal_point;
             goal_point.header.frame_id = "map";
             goal_point.header.stamp = ros::Time::now();
@@ -356,40 +393,58 @@ class Frontiers
             goal_point.color.a = 1.0;
 
             if(valid_cluster.size()!=0){
-                int answer= valid_cluster[0];
-                double max = clustered[valid_cluster[0]].num_factor*0.5-clustered[valid_cluster[0]].dist_factor*1e-3+clustered[valid_cluster[0]].region_factor;
-                for(int i=1; i<valid_cluster.size();i++){
-                    double obj =  clustered[valid_cluster[i]].num_factor*0.5-clustered[valid_cluster[i]].dist_factor*1e-3+clustered[valid_cluster[i]].region_factor;
-                    if(max<obj){
-                        max = obj;
-                        answer = valid_cluster[i];
-                    }
+            int answer= valid_cluster[0];
+            double max = clustered[valid_cluster[0]].num_factor+exp(-clustered[valid_cluster[0]].dist_factor)+clustered[valid_cluster[0]].region_factor;
+            
+            for(int i=1; i<valid_cluster.size();i++){
+                // clustered[valid_cluster[i]].obj = clustered[valid_cluster[i]].num_factor+exp(-clustered[valid_cluster[i]].dist_factor)+clustered[valid_cluster[i]].region_factor;
+                clustered[valid_cluster[i]].obj = exp(-clustered[valid_cluster[i]].dist_factor)+clustered[valid_cluster[i]].region_factor;
+                if(max<clustered[valid_cluster[i]].obj){
+                    max = clustered[valid_cluster[i]].obj;
+                    answer = valid_cluster[i];
                 }
-                int t_x = clustered[answer].frontier_index[clustered[answer].frontier_index.size()/2] % map->info.width;
-                int t_y = clustered[answer].frontier_index[clustered[answer].frontier_index.size()/2] / map->info.width;
-                    
-                geometry_msgs::Point p;
-                p.x = (t_x *map->info.resolution) + map->info.origin.position.x + map->info.resolution /2;
-                p.y = (t_y *map->info.resolution) + map->info.origin.position.y + map->info.resolution /2;
-                p.z = 1.0;
-                goal_point.points.push_back(p);
-                goal_pub_.publish(goal_point);
-                //send goal msg
-                MoveBaseClient mc("move_base");
-                while(!mc.waitForServer(ros::Duration(5,0))){
-                    ROS_INFO("Waiting for the move_base action server to come up");
-                }
-                // ROS_INFO("STATE : %s", mc.getState().toString().c_str());   
-                move_base_msgs::MoveBaseGoal goal_;
-                goal_.target_pose.pose.position = p;
-                goal_.target_pose.pose.orientation.w = 1.;
-                goal_.target_pose.header.frame_id = "map";
-                goal_.target_pose.header.stamp = ros::Time::now();
-                mc.sendGoal(goal_);
-                // ROS_INFO("send Goal");
-
-                mc.waitForResult(ros::Duration(6,0));
             }
+            
+            int t_x = clustered[answer].frontier_index[clustered[answer].frontier_index.size()/2] % map->info.width;
+            int t_y = clustered[answer].frontier_index[clustered[answer].frontier_index.size()/2] / map->info.width;
+
+            int num_frontier =  clustered[answer].frontier_index.size();
+
+            //to select centroid point
+            if(num_frontier>50){
+                int t_x_0 = clustered[answer].frontier_index[0] % map->info.width;
+                int t_y_0 = clustered[answer].frontier_index[0] / map->info.width;
+                int t_x_1 = clustered[answer].frontier_index[num_frontier/2] % map->info.width;
+                int t_y_1 = clustered[answer].frontier_index[num_frontier/2] / map->info.width;
+                int t_x_2 = clustered[answer].frontier_index[num_frontier-1] % map->info.width;
+                int t_y_2 = clustered[answer].frontier_index[num_frontier-1] / map->info.width;
+                t_x = (t_x_0+t_x_1+t_x_2)/3;
+                t_y = (t_y_0+t_y_1+t_y_2)/3;
+            }
+            
+
+            geometry_msgs::Point p;
+            p.x = (t_x *map->info.resolution) + map->info.origin.position.x + map->info.resolution /2;
+            p.y = (t_y *map->info.resolution) + map->info.origin.position.y + map->info.resolution /2;
+            p.z = 1.0;
+            goal_point.points.push_back(p);
+            goal_pub_.publish(goal_point);
+            //send goal msg
+            MoveBaseClient mc("move_base");
+            while(!mc.waitForServer(ros::Duration(5,0))){
+                ROS_INFO("Waiting for the move_base action server to come up");
+            }
+            // ROS_INFO("STATE : %s", mc.getState().toString().c_str());   
+            move_base_msgs::MoveBaseGoal goal_;
+            goal_.target_pose.pose.position = p;
+            goal_.target_pose.pose.orientation.w = 1.;
+            goal_.target_pose.header.frame_id = "map";
+            goal_.target_pose.header.stamp = ros::Time::now();
+            mc.sendGoal(goal_);
+            // ROS_INFO("send Goal");
+
+            mc.waitForResult(ros::Duration(6,0));
+        }
         }
         
         void publish_frontier(){
@@ -450,8 +505,27 @@ class Frontiers
                     //     p1.y = (t_y*map->info.resolution) + map->info.origin.position.y + map->info.resolution /2;
                     //     cluster_point.points.push_back(p1);
                     // }
-                    int t_x = clustered[j].frontier_index[num_frontier/2] % map->info.width;
-                    int t_y = clustered[j].frontier_index[num_frontier/2] / map->info.width;
+                    int t_x_0 = clustered[j].frontier_index[0] % map->info.width;
+                    int t_y_0 = clustered[j].frontier_index[0] / map->info.width;
+                    int t_x_1 = clustered[j].frontier_index[num_frontier/2] % map->info.width;
+                    int t_y_1 = clustered[j].frontier_index[num_frontier/2] / map->info.width;
+                    int t_x_2 = clustered[j].frontier_index[num_frontier-1] % map->info.width;
+                    int t_y_2 = clustered[j].frontier_index[num_frontier-1] / map->info.width;
+                    int t_x = (t_x_0+t_x_1+t_x_2)/3;
+                    int t_y = (t_y_0+t_y_1+t_y_2)/3;
+
+                    // for(int i=0; i<3-1;i++){
+                    //     x = clustered[j].frontier_index[i] % map->info.width;
+                    //     y = clustered[j].frontier_index[i] % map->info.width;
+                    //     xi = clustered[j].frontier_index[i+1] % map->info.width;
+                    //     yi = clustered[j].frontier_index[i+1] % map->info.width;
+                    //     t_x = t_x +(x+xi)*(x*yi-xi*y);
+                    //     t_y = t_y +(y+yi)*(x*yi-xi*y);
+                    //     centroid=centroid + (x*yi - xi*y);
+                    //     ROS_WARN("%d : (%d, %d), %d",i,t_x,t_y,centroid);
+                    // }
+                    // t_x = t_x /(3*centroid);
+                    // t_y = t_y /(3*centroid);
                     p2.x = (t_x*map->info.resolution) + map->info.origin.position.x + map->info.resolution /2;
                     p2.y = (t_y*map->info.resolution) + map->info.origin.position.y + map->info.resolution /2;
                     center_point.points.push_back(p2);
@@ -468,9 +542,6 @@ class Frontiers
             center_frontier_pub_.publish(center_point);
         }
 
-        
-
-        //utils
         int gridTomap(int x, int y, int width){
             return y * width + x;
         }
@@ -487,11 +558,11 @@ class Frontiers
             visited.clear();
             frontier_map.clear();
             valid_cluster.clear();
-            regions.clear();
             for(int i=0; i<group_id;i++){
                 clustered[i].frontier_index.clear();
             }
-            detect_time=cluster_time=cal_size_time=cal_dist_time=cal_region_time=cal_region_time_=total=0;
+            regions.clear();
+            segment_img.release();
         }
 
         ~Frontiers(){

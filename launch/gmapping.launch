@@ -1,6 +1,7 @@
 <launch>
   <!-- Arguments -->
   <arg name="open_rviz" default="true"/>
+  <arg name="YOLO" default="false"/>
 
   <!-- TurtleBot3 -->
   <include file="$(find turtlebot3_bringup)/launch/turtlebot3_remote.launch">
@@ -8,11 +9,29 @@
   </include>
 
   <!-- SLAM: Gmapping, Cartographer, Hector, Karto, Frontier_exploration, RTAB-Map -->
-  <node pkg="gmapping" type="slam_gmapping" name="turtlebot3_slam_gmapping" output="screen">
+  <node pkg="gmapping" type="slam_gmapping" name="gmapping" output="screen">
     <param name="base_frame" value="base_footprint"/>
     <param name="odom_frame" value="odom"/>
     <param name="map_frame"  value="map"/>
     <rosparam command="load" file="$(find autonomous_exploration)/config/gmapping_params.yaml" />
+  </node>
+
+  <!-- Navigation -->
+  <arg name="model" default="$(env TURTLEBOT3_MODEL)" doc="model type [burger, waffle, waffle_pi]"/>
+
+  <!-- move_base -->
+  <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+    <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS" />
+    <rosparam file="$(find autonomous_exploration)/param/costmap_common_params.yaml" command="load" ns="global_costmap" />
+    <rosparam file="$(find autonomous_exploration)/param/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find autonomous_exploration)/param/local_costmap_params.yaml" command="load" />
+    <rosparam file="$(find autonomous_exploration)/param/global_costmap_params.yaml" command="load" />
+    <rosparam file="$(find autonomous_exploration)/param/move_base_params.yaml" command="load" />
+    <rosparam file="$(find autonomous_exploration)/param/dwa_local_planner_params.yaml" command="load" />
+    <!-- <remap from="cmd_vel" to="/cmd_vel"/>
+    <remap from="odom" to="odom"/> -->
+    <param name="DWAPlannerROS/min_vel_x" value="0.0"/>
+    <rosparam file="$(find autonomous_exploration)/param/global_costmap_params.yaml" command="load" if="$(arg YOLO)" />
   </node>
 
   <!-- rviz -->
