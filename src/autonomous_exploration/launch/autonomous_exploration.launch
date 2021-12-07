@@ -1,0 +1,11 @@
+<launch>
+  <!-- Arguments -->
+
+
+  <node pkg="autonomous_exploration" type="nbv_exploration" name="autonomous_exploration" output="screen"/>
+  
+  <node pkg="inc_dude" type="inc_dude" name="segmentation" />
+
+
+
+</launch>

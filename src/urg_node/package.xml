@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>urg_node</name>
+  <version>0.1.15</version>
+  <description>urg_node</description>
+
+  <maintainer email="tony.baltovski@gmail.com">Tony Baltovski</maintainer>
+
+  <license>BSD</license>
+
+  <url type="website">http://ros.org/wiki/urg_node</url>
+  <url type="bugtracker">https://github.com/ros-drivers/urg_node/issues</url>
+  <url type="repository">https://github.com/ros-drivers/urg_node</url>
+
+  <author email="chadrockey@gmail.com">Chad Rockey</author>
+  <author email="modriscoll@clearpath.ai">Mike O'Driscoll</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>diagnostic_updater</depend>
+  <depend>dynamic_reconfigure</depend>
+  <depend>laser_proc</depend>
+  <depend>message_generation</depend>
+  <depend>nodelet</depend>
+  <depend>rosconsole</depend>
+  <depend>roscpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>tf</depend>
+  <depend>urg_c</depend>
+
+  <exec_depend>message_runtime</exec_depend>
+
+  <test_depend>roslint</test_depend>
+  <test_depend>roslaunch</test_depend>
+
+  <export>
+  </export>
+</package>

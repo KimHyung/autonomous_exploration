@@ -1,0 +1,7 @@
+- git:
+    local-name: realsense
+    uri: https://github.com/Affonso-Gui/realsense.git
+    version: without_tf_publish
+- git:
+    local-name: darknet_ros
+    uri: https://github.com/Affonso-Gui/darknet_ros.git --recursive
