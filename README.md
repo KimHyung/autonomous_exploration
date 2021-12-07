@@ -59,44 +59,55 @@ To select the most meaningful point, we created a cost function based on 3 value
 
     //3-1. Luanch autonomus exploration without yolo
     roslaunch autonomous_exploration autonomous_exploration.launch
-    //3-2. Luanch autonomus exploration without yolo
+    //3-2. Luanch autonomus exploration with yolo
     roslaunch autonomous_exploration yolo.launch
+    
+    *To launch autonomous_exploration with yolo, you have to set up your environment(nvidia driver, CUDA, cudnn) for YOLO(ref. https://github.com/leggedrobotics/darknet_ros)
 ``````
 ---
-## Description
+## Flowchart
+<img src = "./img/flowchart.png" width="">
+
+---
+## Result
+
+
+<!-- ## Description
+### Object-based costmap
+
+
+### Cost function
 To select the most meaningful point, we created a cost function based on 3 values: 2d map segmentation, the clustering size of the detected frontier, and the A* distance to the point.
-### *size gain*
+#### *size gain*
 To detect and cluster frontiers, we used 8 direction search method.
 
 In the 2D occupied grid map, the frontier is detected through an 8-direction search method based on the open space, and if there is a frontier in the grid in 8 directions near the detected frontier, clustering it as a group.
 
-The size gain of each frontier group is the ***number of clustered frontiers*** / ***total number of frontiers***. That is, it is assumed that the larger the size gain value, the more information can be seen by going to the location of the corresponding group.
+The size gain of each frontier group is the ***number of clustered frontiers*** / ***total number of frontiers***. That is, it is assumed that the larger the size gain value, the more information can be seen by going to the location of the corresponding group. -->
 
-<img src = "./etc/1.png" width="">
+<!-- <img src = "./etc/1.png" width=""> -->
 
-### *distance gain*
-To calculate the actual distance to each frontier group, move_base package is used. Whenever a frontier group is newly created, the A* path length is calculated through a service call. To use the distance close to the robot as the next destination, the distance gain was calculated as e^(-distance).
+<!-- #### *distance gain*
+To calculate the actual distance to each frontier group, move_base package is used. Whenever a frontier group is newly created, the A* path length is calculated through a service call. To use the distance close to the robot as the next destination, the distance gain was calculated as e^(-distance). -->
 
-<img src = "./etc/2.jpg" width="45%">
+<!-- <img src = "./etc/2.jpg" width="45%"> -->
 
-### *region gain*
+<!-- #### *region gain*
 While the robot explores new areas (such as rooms and hallways), the robot often moves to other areas before exploring one area.
 
-To solve this error, we used 2d map segmentation information to give the cost function an incept to search all the frontiers in the area if the area where the current robot is and the frontier group are in the same area.
+To solve this error, we used 2d map segmentation information to give the cost function an incept to search all the frontiers in the area if the area where the current robot is and the frontier group are in the same area. -->
 
-<img src = "./etc/3.jpg" width="45%">
+<!-- <img src = "./etc/3.jpg" width="45%"> -->
 
----
+<!-- ---
 ## Result
-X8
-<img src = "./etc/simulation.gif" width="">
-
----
-## Challenge (In progress)
+X8 -->
+<!-- <img src = "./etc/simulation.gif" width=""> -->
+<!-- ## Challenge (In progress)
 In the cluttered environment, when autonomous driving using a 2d lidar sensor, the 3D size of various obstacles such as chairs and desks was not taken into account, so driving failed in many cases. To solve this error, simply create a 3D space using a visual slam or 3d lidar sensor and project it in 2d. (2) The 3d lidar sensor has a relatively high computational cost.
 <img src = "./etc/4.png" width="">
 
 To solve this error, we would like to propose a method for recognizing an object and measuring the 3d size of the object.
 <img src = "./etc/5.png" width="">
 
-<img src = "./etc/6.PNG" width="">
+<img src = "./etc/6.PNG" width=""> -->
