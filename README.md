@@ -1,7 +1,7 @@
 # Autonomous Exploration
 ---
 Autonomous exploration package aims to explore unknown areas faster and more efficiently by selecting the most meaningful point as the next goal point.
-To select the most meaningful point, we created a cost function based on 3 values: 2d map segmentation, the clustering size of the detected frontier, and the A* distance to the point.
+To select the most meaningful point, we created a cost function based on 3 values: 2d map segmentation, the clustering size of the detected frontier, and the A* distance to the point. Also,To safely avoid obstacles being explored, we have created a cost map based on the obstacles explored by yolo and 2d lidar.
 
 ---
 ##  Install
@@ -70,6 +70,13 @@ To select the most meaningful point, we created a cost function based on 3 value
 
 ---
 ## Result
+### simulation 
+<img src = "./img/simulation.gif" width="">
+
+### experiment
+<img src = "./img/experiment.gif" width="">
+
+---
 
 
 <!-- ## Description
